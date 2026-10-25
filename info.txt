@@ -1,0 +1,14 @@
+OpenCode in Actions — запуск ИИ-агента OpenCode в GitHub Actions.
+
+Возможности:
+- Автоматизация разработки: анализ кода, рефакторинг, исправление ошибок, создание новых файлов и функций.
+- Запуск вручную через вкладку Actions (Workflow "OpenCode AI Agent") с настраиваемым промптом.
+- Режимы агента: build (изменение кода) и plan (анализ и планирование без правок).
+- Бесплатные модели без API-ключей: opencode/deepseek-v4.1-flash-free (по умолчанию),
+  nemotron-3.5-lightning-free, glm-5.3-flash-free, mimo-v2.6-flash-free.
+- Поддержка платных моделей через Secrets: Anthropic, OpenAI, Google Gemini, OpenRouter, DeepSeek.
+- Автоматическое создание ветки и Pull Request с изменениями, настраиваемое имя ветки.
+- Отчет в Job Step Summary: параметры запуска, список измененных файлов, git diff, ссылка на PR, лог.
+- Артефакты запуска: changes.patch, changed_files.txt, opencode_output.log.
+- Кэширование бинарника OpenCode для быстрого старта; Dockerfile и docker-compose.yml
+  для локальной разработки и изолированного запуска.
