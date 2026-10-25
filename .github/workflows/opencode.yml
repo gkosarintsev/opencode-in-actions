@@ -8,17 +8,20 @@ on:
         required: true
         type: string
       model:
-        description: 'Модель LLM'
+        description: 'Модель LLM (бесплатные доступны сразу без ключей)'
         required: true
-        default: 'anthropic/claude-3-5-sonnet'
+        default: 'opencode/deepseek-v4.1-flash-free'
         type: choice
         options:
+          - 'opencode/deepseek-v4.1-flash-free'
+          - 'opencode/nemotron-3.5-lightning-free'
+          - 'opencode/glm-5.3-flash-free'
+          - 'opencode/mimo-v2.6-flash-free'
           - 'anthropic/claude-3-5-sonnet'
           - 'anthropic/claude-3-7-sonnet'
           - 'openai/gpt-4o'
           - 'openai/gpt-4o-mini'
           - 'google/gemini-2.5-flash'
-          - 'google/gemini-2.5-pro'
           - 'deepseek/deepseek-chat'
           - 'openrouter/auto'
       agent:
@@ -174,9 +177,14 @@ jobs:
           ---
           *Создано автоматически через GitHub Actions workflow.*
           EOF
-          PR_URL=$(gh pr create --base main --head "$BRANCH" --title "feat(opencode): $SHORT_PROMPT" --body-file .opencode-artifacts/pr_body.md)
-          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
-          echo "Создан Pull Request: $PR_URL"
+          PR_URL=""
+          if PR_URL=$(gh pr create --base main --head "$BRANCH" --title "feat(opencode): $SHORT_PROMPT" --body-file .opencode-artifacts/pr_body.md 2>&1); then
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+            echo "Создан Pull Request: $PR_URL"
+          else
+            echo "::warning::Не удалось автоматически открыть PR: $PR_URL"
+            echo "pr_url=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Publish Step Summary
         if: always()
@@ -209,6 +217,8 @@ jobs:
             fi
             if [ -n "$PR_URL" ]; then
               echo "| **Pull Request** | 🚀 [Посмотреть Pull Request]($PR_URL) (ветка: \`$BRANCH\`) |"
+            elif [ "$HAS_CHANGES" = "true" ]; then
+              echo "| **Ветка с кодом** | 🌿 Запушена ветка \`$BRANCH\` |"
             fi
             echo ""
             if [ -f .opencode-artifacts/changed_files.txt ] && [ -s .opencode-artifacts/changed_files.txt ]; then

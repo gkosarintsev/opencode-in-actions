@@ -4,6 +4,25 @@
 
 ---
 
+## 🎁 Бесплатные модели (работают сразу, без API-ключей и без регистрации!)
+
+OpenCode предоставляет официальные бесплатные модели, которые работают «из коробки» без необходимости вводить какие-либо ключи или регистрироваться:
+
+| Модель | Описание | Нужен ли API-ключ? |
+| :--- | :--- | :--- |
+| **`opencode/deepseek-v4.1-flash-free`** *(по умолчанию)* | Мощная модель от DeepSeek, отлично пишет код, правит файлы и решает задачи | ❌ **Не нужен (бесплатно)** |
+| **`opencode/nemotron-3.5-lightning-free`** | Быстрая модель от NVIDIA | ❌ **Не нужен (бесплатно)** |
+| **`opencode/glm-5.3-flash-free`** | Модель серии GLM Flash | ❌ **Не нужен (бесплатно)** |
+| **`opencode/mimo-v2.6-flash-free`** | Модель Mimo Flash | ❌ **Не нужен (бесплатно)** |
+
+Также поддерживаются стандартные платные модели (требуют добавления соответствующего ключа в Secrets):
+- Anthropic Claude (`anthropic/claude-3-5-sonnet`, `anthropic/claude-3-7-sonnet`)
+- OpenAI (`openai/gpt-4o`, `openai/gpt-4o-mini`)
+- Google Gemini (`google/gemini-2.5-flash`)
+- OpenRouter (`openrouter/auto`)
+
+---
+
 ## 📌 Как запустить вручную через интерфейс GitHub Actions
 
 1. Перейдите во вкладку **Actions** в репозитории на GitHub.
@@ -11,7 +30,7 @@
 3. Нажмите выпадающую кнопку **Run workflow** справа.
 4. Заполните параметры:
    - **Запрос для OpenCode (Prompt)**: текст задания для агента (например: `Создай функцию валидации email на TypeScript с тестами`).
-   - **Модель LLM**: выберите предпочитаемую модель (по умолчанию `anthropic/claude-3-5-sonnet`, доступны также `openai/gpt-4o`, `google/gemini-2.5-flash`, `deepseek/deepseek-chat` и др.).
+   - **Модель LLM**: по умолчанию выбрана бесплатная `opencode/deepseek-v4.1-flash-free`.
    - **Режим агента**:
      - `build` — полный доступ: анализ, изменение и создание файлов, генерация кода.
      - `plan` — режим планирования и анализа без изменения кода.
@@ -31,7 +50,7 @@
      - Таблица параметров (модель, промпт, статус завершения).
      - Список всех измененных или созданных файлов (`git status`).
      - Интерактивный спойлер **Git Diff** со всеми правками кода.
-     - Прямая ссылка на созданный **Pull Request** (если были изменения).
+     - Прямая ссылка на созданный **Pull Request** (или ветку с кодом).
      - Спойлер с полным логом ответа консоли OpenCode.
 2. **Автоматический Pull Request**:
    - Если агент изменил или добавил файлы и была включена опция `create_pr`, в репозитории автоматически создается Pull Request со ссылкой на запуск Actions и описанием промпта.
@@ -70,32 +89,20 @@
 
 ---
 
-## 🔑 Необходимые Secrets (API-ключи)
+## 🔑 Платные Secrets (API-ключи, опционально)
 
-Чтобы OpenCode мог обращаться к выбранным языковым моделям, добавьте соответствующий API-ключ в настройках репозитория:
+Если вы хотите использовать платные модели вместо встроенных бесплатных, добавьте соответствующий API-ключ:
 
 1. Перейдите в **Settings** репозитория -> **Secrets and variables** -> **Actions**.
 2. Нажмите **New repository secret**.
 3. Добавьте один или несколько ключей:
-   - `ANTHROPIC_API_KEY` — для моделей Anthropic Claude (`claude-3-5-sonnet`, `claude-3-7-sonnet` и др.)
-   - `OPENAI_API_KEY` — для моделей OpenAI (`gpt-4o`, `gpt-4o-mini`)
-   - `GEMINI_API_KEY` — для моделей Google Gemini (`gemini-2.5-flash`, `gemini-2.5-pro`)
+   - `ANTHROPIC_API_KEY` — для моделей Anthropic Claude
+   - `OPENAI_API_KEY` — для моделей OpenAI
+   - `GEMINI_API_KEY` — для моделей Google Gemini
    - `OPENROUTER_API_KEY` — для OpenRouter
    - `DEEPSEEK_API_KEY` — для DeepSeek
 
 > **Примечание по правам доступа:**
-> В воркфлоу уже настроены `permissions: contents: write` и `pull-requests: write`. 
-> Убедитесь, что в **Settings** -> **Actions** -> **General** в секции **Workflow permissions** выбрано:
-> **Read and write permissions** и включена галочка **Allow GitHub Actions to create and approve pull requests**.
-
----
-
-## 🔮 Перспектива: полный автономный цикл разработки
-
-Текущий воркфлоу закладывает фундамент для полного цикла:
-1. **Ручной запуск задач** через `workflow_dispatch` (готово).
-2. **Создание PR и веток агентом** (готово).
-3. **Следующие шаги расширения:**
-   - Запуск по комментариям в Issues (`/opencode реализуй фичу X`).
-   - Автоматический Code Review при открытии PR.
-   - Итеративные правки в PR по комментариям разработчика.
+> В воркфлоу настроены `permissions: contents: write` и `pull-requests: write`. 
+> Убедитесь, что в **Settings** -> **Actions** -> **General** в секции **Workflow permissions** включены:
+> **Read and write permissions** и галочка **Allow GitHub Actions to create and approve pull requests**.
