@@ -4,19 +4,28 @@ on:
   workflow_dispatch:
     inputs:
       prompt:
-        description: 'Запрос для OpenCode (Prompt)'
-        required: true
+        description: 'Запрос для OpenCode (Prompt) — можно вставлять многострочный текст или \n'
+        required: false
+        default: ''
+        type: string
+      prompt_file:
+        description: 'Путь к файлу с промптом (опционально, если хотите передать ТЗ из файла, например: PROMPT.md)'
+        required: false
+        default: ''
         type: string
       model:
-        description: 'Модель LLM (бесплатные доступны сразу без ключей)'
+        description: 'Модель LLM (бесплатные работают сразу без регистрации и без ключей)'
         required: true
         default: 'opencode/deepseek-v4.1-flash-free'
         type: choice
         options:
           - 'opencode/deepseek-v4.1-flash-free'
+          - 'opencode/nemotron-3-ultra-free'
+          - 'opencode/nemotron-3.5-super-vl-free'
           - 'opencode/nemotron-3.5-lightning-free'
           - 'opencode/glm-5.3-flash-free'
           - 'opencode/mimo-v2.6-flash-free'
+          - 'opencode/flint-40b-free'
           - 'anthropic/claude-3-5-sonnet'
           - 'anthropic/claude-3-7-sonnet'
           - 'openai/gpt-4o'
@@ -102,6 +111,27 @@ jobs:
         run: |
           mkdir -p .opencode-artifacts
 
+      - name: Resolve Prompt
+        id: resolve-prompt
+        env:
+          RAW_PROMPT: ${{ inputs.prompt }}
+          PROMPT_FILE: ${{ inputs.prompt_file }}
+        run: |
+          if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
+            echo "Чтение промпта из указанного файла: $PROMPT_FILE"
+            cat "$PROMPT_FILE" > .opencode-artifacts/resolved_prompt.txt
+          elif [ -n "$RAW_PROMPT" ]; then
+            echo "Использование введенного промпта с обработкой переносов строк"
+            echo -e "$RAW_PROMPT" > .opencode-artifacts/resolved_prompt.txt
+          elif [ -f "PROMPT.md" ] && [ -s "PROMPT.md" ]; then
+            echo "Использование промпта по умолчанию из PROMPT.md"
+            cat "PROMPT.md" > .opencode-artifacts/resolved_prompt.txt
+          else
+            echo "::error::Промпт не задан! Введите текст промпта или создайте файл PROMPT.md."
+            exit 1
+          fi
+          echo "Длина промпта (байт): $(wc -c < .opencode-artifacts/resolved_prompt.txt)"
+
       - name: Execute OpenCode
         id: run-opencode
         env:
@@ -113,14 +143,13 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROMPT: ${{ inputs.prompt }}
           MODEL: ${{ inputs.model }}
           AGENT: ${{ inputs.agent }}
         run: |
+          PROMPT=$(cat .opencode-artifacts/resolved_prompt.txt)
           echo "=== Запуск OpenCode ==="
           echo "Модель: $MODEL"
           echo "Агент: $AGENT"
-          echo "Запрос: $PROMPT"
           echo "======================"
           set +e
           opencode run --auto --model "$MODEL" --agent "$AGENT" "$PROMPT" </dev/null 2>&1 | tee .opencode-artifacts/opencode_output.log
@@ -150,24 +179,19 @@ jobs:
         if: inputs.create_pr && steps.git-changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROMPT: ${{ inputs.prompt }}
           MODEL: ${{ inputs.model }}
           CUSTOM_BRANCH: ${{ inputs.branch_name }}
         run: |
+          PROMPT=$(cat .opencode-artifacts/resolved_prompt.txt)
           BRANCH="${CUSTOM_BRANCH:-opencode/run-${{ github.run_id }}}"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           git checkout -b "$BRANCH"
           git add -A
-          SHORT_PROMPT=$(echo "$PROMPT" | head -n 1 | cut -c 1-60)
+          SHORT_PROMPT=$(head -n 1 .opencode-artifacts/resolved_prompt.txt | cut -c 1-60)
           git commit -m "feat(opencode): $SHORT_PROMPT" -m "Prompt: $PROMPT" -m "Model: $MODEL"
           git push origin "$BRANCH" --force
           cat << 'EOF' > .opencode-artifacts/pr_body.md
           ### 🤖 Автоматические изменения от OpenCode AI CLI
-
-          **Промпт:**
-          ```text
-          $PROMPT
-          ```
 
           **Параметры:**
           * **Модель:** `$MODEL`
@@ -189,7 +213,6 @@ jobs:
       - name: Publish Step Summary
         if: always()
         env:
-          PROMPT: ${{ inputs.prompt }}
           MODEL: ${{ inputs.model }}
           AGENT: ${{ inputs.agent }}
           EXIT_CODE: ${{ steps.run-opencode.outputs.exit_code }}
@@ -202,7 +225,6 @@ jobs:
             echo ""
             echo "| Параметр | Значение |"
             echo "| :--- | :--- |"
-            echo "| **Запрос (Prompt)** | \`$PROMPT\` |"
             echo "| **Модель** | \`$MODEL\` |"
             echo "| **Режим агента** | \`$AGENT\` |"
             if [ "$EXIT_CODE" = "0" ]; then
@@ -221,6 +243,16 @@ jobs:
               echo "| **Ветка с кодом** | 🌿 Запушена ветка \`$BRANCH\` |"
             fi
             echo ""
+            if [ -f .opencode-artifacts/resolved_prompt.txt ]; then
+              echo "<details open>"
+              echo "<summary>📝 <b>Использованный промпт</b></summary>"
+              echo ""
+              echo "\`\`\`text"
+              cat .opencode-artifacts/resolved_prompt.txt
+              echo "\`\`\`"
+              echo "</details>"
+              echo ""
+            fi
             if [ -f .opencode-artifacts/changed_files.txt ] && [ -s .opencode-artifacts/changed_files.txt ]; then
               echo "### 📂 Список измененных файлов"
               echo "\`\`\`text"
