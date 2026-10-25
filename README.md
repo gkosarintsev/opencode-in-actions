@@ -1,6 +1,26 @@
 # OpenCode in Actions 🚀
 
-Автономный запуск ИИ-агента [OpenCode](https://opencode.ai) внутри GitHub Actions для автоматизации разработки, рефакторинга и генерации Pull Request'ов.
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/gkosarintsev/opencode-in-actions)
+
+Автономный запуск ИИ-агента [OpenCode](https://opencode.ai) внутри GitHub Actions и среда облачной разработки в GitHub Codespaces для автоматизации разработки, рефакторинга и генерации Pull Request'ов.
+
+---
+
+## ☁️ Запуск в GitHub Codespaces в 1 клик
+
+Репозиторий полностью настроен для работы в **GitHub Codespaces**:
+
+1. Нажмите кнопку выше **Open in GitHub Codespaces** (или в репозитории на GitHub нажмите зеленую кнопку **Code ➔ Codespaces ➔ Create codespace on main**).
+2. Codespaces автоматически:
+   - Развернет контейнер разработки Ubuntu 24.04.
+   - Установит **OpenCode CLI**.
+   - Установит официальное расширение **OpenCode для VS Code** (`sst-dev.opencode`).
+   - Установит расширение **GitHub Actions** (чтобы запускать и мониторить воркфлоу прямо из боковой панели).
+   - Настроит GitHub CLI (`gh`).
+3. **Как работать с OpenCode в Codespaces:**
+   - Нажмите `Ctrl + Esc` — откроется интерактивный терминал OpenCode в разделенном окне.
+   - Либо просто введите в терминале `opencode` (интерактивный режим) или `opencode run "ваша задача"` (автономный режим).
+   - Бесплатные модели (`opencode/deepseek-v4.1-flash-free`, `opencode/nemotron-3-ultra-free` и др.) работают прямо в Codespaces без ключей!
 
 ---
 
