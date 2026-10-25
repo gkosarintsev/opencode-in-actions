@@ -1,0 +1,260 @@
+name: OpenCode AI Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Запрос для OpenCode (Prompt)'
+        required: true
+        type: string
+      model:
+        description: 'Модель LLM'
+        required: true
+        default: 'anthropic/claude-3-5-sonnet'
+        type: choice
+        options:
+          - 'anthropic/claude-3-5-sonnet'
+          - 'anthropic/claude-3-7-sonnet'
+          - 'openai/gpt-4o'
+          - 'openai/gpt-4o-mini'
+          - 'google/gemini-2.5-flash'
+          - 'google/gemini-2.5-pro'
+          - 'deepseek/deepseek-chat'
+          - 'openrouter/auto'
+      agent:
+        description: 'Режим агента (build: изменение кода, plan: только анализ)'
+        required: true
+        default: 'build'
+        type: choice
+        options:
+          - 'build'
+          - 'plan'
+      create_pr:
+        description: 'Создать Pull Request при наличии изменений'
+        required: false
+        default: true
+        type: boolean
+      branch_name:
+        description: 'Имя ветки для PR (оставьте пустым для автогенерации)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: opencode-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  opencode:
+    name: Run OpenCode
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine OpenCode version
+        id: opencode-version
+        run: |
+          VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
+          echo "OpenCode release version: ${VERSION:-latest}"
+
+      - name: Cache OpenCode binary
+        id: cache-opencode
+        uses: actions/cache@v4
+        with:
+          path: ~/.opencode/bin
+          key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.opencode-version.outputs.version }}
+
+      - name: Install OpenCode
+        if: steps.cache-opencode.outputs.cache-hit != 'true'
+        run: |
+          echo "Downloading and installing OpenCode CLI..."
+          curl -fsSL https://opencode.ai/install | bash
+
+      - name: Add OpenCode to PATH
+        run: |
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+      - name: Verify OpenCode
+        run: |
+          opencode --version
+
+      - name: Configure Git author
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare artifacts directory
+        run: |
+          mkdir -p .opencode-artifacts
+
+      - name: Execute OpenCode
+        id: run-opencode
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMPT: ${{ inputs.prompt }}
+          MODEL: ${{ inputs.model }}
+          AGENT: ${{ inputs.agent }}
+        run: |
+          echo "=== Запуск OpenCode ==="
+          echo "Модель: $MODEL"
+          echo "Агент: $AGENT"
+          echo "Запрос: $PROMPT"
+          echo "======================"
+          
+          set +e
+          opencode run --auto --model "$MODEL" --agent "$AGENT" "$PROMPT" </dev/null 2>&1 | tee .opencode-artifacts/opencode_output.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::warning::OpenCode завершился с кодом ошибки: $EXIT_CODE"
+          fi
+
+      - name: Inspect Git changes
+        id: git-changes
+        run: |
+          git status -s > .opencode-artifacts/changed_files.txt
+          git diff > .opencode-artifacts/changes.patch
+          
+          if [ -s .opencode-artifacts/changed_files.txt ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Обнаружены изменения в репозитории:"
+            cat .opencode-artifacts/changed_files.txt
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "Изменений в репозитории нет."
+          fi
+
+      - name: Create Branch & Pull Request
+        id: create-pr
+        if: ${{ inputs.create_pr && steps.git-changes.outputs.has_changes == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMPT: ${{ inputs.prompt }}
+          MODEL: ${{ inputs.model }}
+          CUSTOM_BRANCH: ${{ inputs.branch_name }}
+        run: |
+          BRANCH="${CUSTOM_BRANCH:-opencode/run-${{ github.run_id }}}"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          git checkout -b "$BRANCH"
+          git add -A
+          
+          SHORT_PROMPT=$(echo "$PROMPT" | head -n 1 | cut -c 1-60)
+          git commit -m "feat(opencode): $SHORT_PROMPT" -m "Prompt: $PROMPT" -m "Model: $MODEL"
+          git push origin "$BRANCH" --force
+          
+          PR_URL=$(gh pr create             --base main             --head "$BRANCH"             --title "feat(opencode): $SHORT_PROMPT"             --body "### 🤖 Автоматические изменения от OpenCode AI CLI
+
+**Промпт:**
+\`\`\`text
+$PROMPT
+\`\`\`
+
+**Параметры:**
+* **Модель:** \`$MODEL\`
+* **Workflow Run:** [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+* **Запустил:** @${{ github.actor }}
+
+---
+*Создано автоматически через GitHub Actions workflow.*")
+          
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "Создан Pull Request: $PR_URL"
+
+      - name: Publish Step Summary
+        if: always()
+        env:
+          PROMPT: ${{ inputs.prompt }}
+          MODEL: ${{ inputs.model }}
+          AGENT: ${{ inputs.agent }}
+          EXIT_CODE: ${{ steps.run-opencode.outputs.exit_code }}
+          HAS_CHANGES: ${{ steps.git-changes.outputs.has_changes }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+          BRANCH: ${{ steps.create-pr.outputs.branch }}
+        run: |
+          {
+            echo "## 🤖 Результаты запуска OpenCode"
+            echo ""
+            echo "| Параметр | Значение |"
+            echo "| :--- | :--- |"
+            echo "| **Запрос (Prompt)** | \`$PROMPT\` |"
+            echo "| **Модель** | \`$MODEL\` |"
+            echo "| **Режим агента** | \`$AGENT\` |"
+            if [ "$EXIT_CODE" = "0" ]; then
+              echo "| **Статус OpenCode** | 🟢 Успешно (Exit code: 0) |"
+            else
+              echo "| **Статус OpenCode** | 🔴 Ошибка (Exit code: ${EXIT_CODE:-unknown}) |"
+            fi
+            
+            if [ "$HAS_CHANGES" = "true" ]; then
+              echo "| **Изменения в коде** | 📝 Обнаружены |"
+            else
+              echo "| **Изменения в коде** | ⚪ Изменений нет |"
+            fi
+            
+            if [ -n "$PR_URL" ]; then
+              echo "| **Pull Request** | 🚀 [Посмотреть Pull Request]($PR_URL) (ветка: \`$BRANCH\`) |"
+            fi
+            echo ""
+            
+            if [ -f .opencode-artifacts/changed_files.txt ] && [ -s .opencode-artifacts/changed_files.txt ]; then
+              echo "### 📂 Список измененных файлов"
+              echo "\`\`\`text"
+              cat .opencode-artifacts/changed_files.txt
+              echo "\`\`\`"
+              echo ""
+            fi
+            
+            if [ -f .opencode-artifacts/changes.patch ] && [ -s .opencode-artifacts/changes.patch ]; then
+              echo "<details>"
+              echo "<summary>🔍 <b>Нажмите, чтобы развернуть Git Diff</b></summary>"
+              echo ""
+              echo "\`\`\`diff"
+              head -n 250 .opencode-artifacts/changes.patch
+              if [ \$(wc -l < .opencode-artifacts/changes.patch) -gt 250 ]; then
+                echo "... (diff обрезан, полный diff доступен в артефактах сборки)"
+              fi
+              echo "\`\`\`"
+              echo "</details>"
+              echo ""
+            fi
+            
+            if [ -f .opencode-artifacts/opencode_output.log ]; then
+              echo "<details open>"
+              echo "<summary>📋 <b>Вывод консоли OpenCode</b></summary>"
+              echo ""
+              echo "\`\`\`text"
+              tail -n 150 .opencode-artifacts/opencode_output.log
+              echo "\`\`\`"
+              echo "</details>"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Run Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-artifacts-${{ github.run_id }}
+          path: .opencode-artifacts/
+          if-no-files-found: ignore

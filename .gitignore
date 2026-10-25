@@ -1,0 +1,16 @@
+# OpenCode artifacts & logs
+.opencode-artifacts/
+.opencode/
+*.log
+*.patch
+
+# Environment & credentials
+.env
+.env.*
+!.env.example
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
