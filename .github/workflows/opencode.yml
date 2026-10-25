@@ -119,15 +119,13 @@ jobs:
           echo "Агент: $AGENT"
           echo "Запрос: $PROMPT"
           echo "======================"
-          
           set +e
           opencode run --auto --model "$MODEL" --agent "$AGENT" "$PROMPT" </dev/null 2>&1 | tee .opencode-artifacts/opencode_output.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
-          
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
           if [ $EXIT_CODE -ne 0 ]; then
-            echo "::warning::OpenCode завершился с кодом ошибки: $EXIT_CODE"
+            echo "::warning::OpenCode завершился с кодом: $EXIT_CODE"
           fi
 
       - name: Inspect Git changes
@@ -135,7 +133,6 @@ jobs:
         run: |
           git status -s > .opencode-artifacts/changed_files.txt
           git diff > .opencode-artifacts/changes.patch
-          
           if [ -s .opencode-artifacts/changed_files.txt ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Обнаружены изменения в репозитории:"
@@ -147,7 +144,7 @@ jobs:
 
       - name: Create Branch & Pull Request
         id: create-pr
-        if: ${{ inputs.create_pr && steps.git-changes.outputs.has_changes == 'true' }}
+        if: inputs.create_pr && steps.git-changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PROMPT: ${{ inputs.prompt }}
@@ -156,29 +153,28 @@ jobs:
         run: |
           BRANCH="${CUSTOM_BRANCH:-opencode/run-${{ github.run_id }}}"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          
           git checkout -b "$BRANCH"
           git add -A
-          
           SHORT_PROMPT=$(echo "$PROMPT" | head -n 1 | cut -c 1-60)
           git commit -m "feat(opencode): $SHORT_PROMPT" -m "Prompt: $PROMPT" -m "Model: $MODEL"
           git push origin "$BRANCH" --force
-          
-          PR_URL=$(gh pr create             --base main             --head "$BRANCH"             --title "feat(opencode): $SHORT_PROMPT"             --body "### 🤖 Автоматические изменения от OpenCode AI CLI
+          cat << 'EOF' > .opencode-artifacts/pr_body.md
+          ### 🤖 Автоматические изменения от OpenCode AI CLI
 
-**Промпт:**
-\`\`\`text
-$PROMPT
-\`\`\`
+          **Промпт:**
+          ```text
+          $PROMPT
+          ```
 
-**Параметры:**
-* **Модель:** \`$MODEL\`
-* **Workflow Run:** [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-* **Запустил:** @${{ github.actor }}
+          **Параметры:**
+          * **Модель:** `$MODEL`
+          * **Workflow Run:** [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          * **Запустил:** @${{ github.actor }}
 
----
-*Создано автоматически через GitHub Actions workflow.*")
-          
+          ---
+          *Создано автоматически через GitHub Actions workflow.*
+          EOF
+          PR_URL=$(gh pr create --base main --head "$BRANCH" --title "feat(opencode): $SHORT_PROMPT" --body-file .opencode-artifacts/pr_body.md)
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           echo "Создан Pull Request: $PR_URL"
 
@@ -206,18 +202,15 @@ $PROMPT
             else
               echo "| **Статус OpenCode** | 🔴 Ошибка (Exit code: ${EXIT_CODE:-unknown}) |"
             fi
-            
             if [ "$HAS_CHANGES" = "true" ]; then
               echo "| **Изменения в коде** | 📝 Обнаружены |"
             else
               echo "| **Изменения в коде** | ⚪ Изменений нет |"
             fi
-            
             if [ -n "$PR_URL" ]; then
               echo "| **Pull Request** | 🚀 [Посмотреть Pull Request]($PR_URL) (ветка: \`$BRANCH\`) |"
             fi
             echo ""
-            
             if [ -f .opencode-artifacts/changed_files.txt ] && [ -s .opencode-artifacts/changed_files.txt ]; then
               echo "### 📂 Список измененных файлов"
               echo "\`\`\`text"
@@ -225,21 +218,19 @@ $PROMPT
               echo "\`\`\`"
               echo ""
             fi
-            
             if [ -f .opencode-artifacts/changes.patch ] && [ -s .opencode-artifacts/changes.patch ]; then
               echo "<details>"
               echo "<summary>🔍 <b>Нажмите, чтобы развернуть Git Diff</b></summary>"
               echo ""
               echo "\`\`\`diff"
               head -n 250 .opencode-artifacts/changes.patch
-              if [ \$(wc -l < .opencode-artifacts/changes.patch) -gt 250 ]; then
+              if [ $(wc -l < .opencode-artifacts/changes.patch) -gt 250 ]; then
                 echo "... (diff обрезан, полный diff доступен в артефактах сборки)"
               fi
               echo "\`\`\`"
               echo "</details>"
               echo ""
             fi
-            
             if [ -f .opencode-artifacts/opencode_output.log ]; then
               echo "<details open>"
               echo "<summary>📋 <b>Вывод консоли OpenCode</b></summary>"
